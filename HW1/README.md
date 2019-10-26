@@ -6,7 +6,7 @@ optimization level.
 
 For this homework, the compilers are the following:
 
-- gg;
+- gcc;
 - icc;
 - clang;
 
@@ -18,9 +18,12 @@ while the optimization levels are two:
 ## Directory structure
 
 ```
-- data              # general data directory, containing training and test sets
-- src               # source file directory
-    |__ ...
-- main.py           # Main Python script to run the homework
-- README.md         # this file
+- data                          # general data directory, containing training and test sets
+- src                           # source file directory
+    |__ models.py               # model definitions
+    |__ preprocess.py           # pre-processing utilities
+    |__ test.py                 # model evaluation and output printing
+    |__ train.py                # model training and parameter tuning
+- main.py                       # main Python script to run the homework
+- README.md                     # this file
 ```
