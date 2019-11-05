@@ -3,8 +3,6 @@ Pre-processing utilities for the feature engineering phase.
 """
 from json import JSONDecoder
 from collections import namedtuple
-from copy import deepcopy
-import re
 import numpy as np
 from typing import List, Dict
 
@@ -34,9 +32,6 @@ class Preprocessor:
 
     # special token for unknown mnemonics, arguments, compilers or optimization levels
     UNK_TOKEN = "<UNK>"
-
-    # special token for mnemonics or arguments under a certain threshold
-    FEW_TOKEN = "<FEW>"
 
     def __init__(self, train: bool = False, debug: bool = False):
         """
@@ -89,8 +84,49 @@ class Preprocessor:
 
         return ret
 
-    def feature_engineer(self, function: Function) -> np.ndarray:
-        pass
+    def feature_engineer(self, function: Function, input_dict: Dict[str, int], compiler_dict: Dict[str, int], optimization_dict: Dict[str, int],
+                         ngrams_size: int = 1, count_addresses: bool = False, count_brackets: bool = False) -> (np.ndarray, int or None, int or None):
+        """
+        Encodes a Function object into a NumPy array, in which dimensions correspond to occurrences of the input dictionary values.
+        :param function: Function object to encode
+        :param input_dict: dictionary of input words
+        :param compiler_dict: dictionary of compiler labels
+        :param optimization_dict: dictionary of optimization levels labels
+        :param ngrams_size: sliding window size to be used when building ngrams (if 1, ngrams are NOT used)
+        :param count_addresses: if True, an additional dimension corresponds to the number of addresses arguments in this function
+        :param count_brackets: if True, an additional dimension corresponds to the number of bracketed arguments in this function
+        :return: Tuple (NumPy array encoding the function, int-encoded compiler label, int-encoded optimization level label).
+                Both the compiler and the optimization level labels can be None, in case of test set encoding.
+        """
+
+        arr_size = len(input_dict) + (1 if count_addresses else 0) + (1 if count_brackets else 0)
+        array = np.zeros(shape=arr_size, dtype=np.int32)
+        addresses = 0
+        brackets = 0
+
+        if count_addresses or count_brackets:
+            for instr in function.instructions:
+                for arg in instr:
+                    if count_addresses and arg.startswith("0x"):
+                        addresses += 1
+                    if count_brackets and arg.startswith("[") and arg.endswith("]"):
+                        brackets += 1
+
+            if (count_addresses or count_addresses) and not (count_addresses and count_brackets):
+                array[-1] = addresses if count_addresses else brackets
+            elif count_addresses and count_brackets:
+                array[-2] = addresses
+                array[-1] = brackets
+
+        for i in range(len(function.instructions) - ngrams_size + 1):
+            mnemonics = [instr[0] for instr in function.instructions[i:i+ngrams_size]]
+            mnemonics = ";".join(mnemonics)
+            pos = input_dict.get(mnemonics, 0)
+            array[pos] += 1
+
+        return array,\
+            compiler_dict[function.compiler] if function.compiler is not None else None,\
+            optimization_dict[function.optimization] if function.optimization is not None else None
 
     def stats(self, training_set: str) -> None:
         """
@@ -196,35 +232,6 @@ class Preprocessor:
 
         return ngrams
 
-    def threshold_replacement(self, dictionary: Dict[str, int], replacement: str, threshold: int = 5) -> (Dict[str, int], List[str]):
-        """
-        Replaces all the keys with a number of occurrences less than the given threshold with the given replacement token.
-        :param dictionary: Dictionary, as returned from Preprocessor.build_dictionaries
-        :param replacement: Replacement token, as str
-        :param threshold: Threshold value to apply the replacement, as int
-        :return: Tuple (input dictionary after applying the threshold-based replacement, list of replaced keys)
-        """
-
-        replaced = []
-        ret = deepcopy(dictionary)
-        for key, value in dictionary.items():
-            if value <= threshold:
-                replaced.append(key)
-
-                if self.__debug:
-                    print("Replacing {k} with {v} occurrences.".format(k=key,
-                                                                       v=value))
-
-                occ = ret[key]
-                ret.pop(key)
-                new_occ = ret.get(replacement, 0) + occ
-                ret[replacement] = new_occ
-
-        if self.__debug:
-            print("Replaced {n} keys under the occurrence threshold.".format(n=len(replaced)))
-
-        return ret
-
     @staticmethod
     def export_dictionary(dictionary: Dict, path: str) -> None:
         """
@@ -310,10 +317,10 @@ class Preprocessor:
         """
 
         mnemonics = Preprocessor.import_dictionary(path=mnemonics_path,
-                                                   starting_tokens=[self.UNK_TOKEN, self.FEW_TOKEN]) if mnemonics_path is not None else None
+                                                   starting_tokens=[self.UNK_TOKEN]) if mnemonics_path is not None else None
 
         arguments = Preprocessor.import_dictionary(path=arguments_path,
-                                                   starting_tokens=[self.UNK_TOKEN, self.FEW_TOKEN]) if arguments_path is not None else None
+                                                   starting_tokens=[self.UNK_TOKEN]) if arguments_path is not None else None
 
         compilers = Preprocessor.import_dictionary(path=compilers_path,
                                                    starting_tokens=[self.UNK_TOKEN]) if compilers_path is not None else None
@@ -331,4 +338,26 @@ if __name__ == "__main__":
     train_path = "../data/train_dataset.jsonl"
     k = 5
     pre = Preprocessor(train=True, debug=True)
-    pre.build_ngrams(training_set=train_path)
+
+    mnemonics = pre.import_dictionary(path="../misc/mnem.txt", starting_tokens=[pre.UNK_TOKEN])
+    compilers = pre.import_dictionary(path="../misc/comp.txt", starting_tokens=[pre.UNK_TOKEN])
+    optimizations = pre.import_dictionary(path="../misc/opts.txt", starting_tokens=[pre.UNK_TOKEN])
+    print(len(mnemonics))
+
+    bigrams = pre.import_dictionary(path="../misc/2grams.txt", starting_tokens=[pre.UNK_TOKEN])
+    print(len(bigrams))
+
+    with open(train_path) as f:
+        for line in f:
+            fn = pre.take(line)
+            print(fn)
+            arr, c, o = pre.feature_engineer(function=fn,
+                                             input_dict=bigrams,
+                                             compiler_dict=compilers,
+                                             optimization_dict=optimizations,
+                                             ngrams_size=2,
+                                             count_addresses=True,
+                                             count_brackets=True)
+            print(len(arr))
+            print(arr)
+            break
