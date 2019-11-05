@@ -4,7 +4,9 @@ Pre-processing utilities for the feature engineering phase.
 from json import JSONDecoder
 from collections import namedtuple
 from copy import deepcopy
-from typing import Dict
+import re
+import numpy as np
+from typing import List, Dict
 
 
 """
@@ -29,6 +31,12 @@ class Preprocessor:
     """
     Pre-processing class.
     """
+
+    # special token for unknown mnemonics, arguments, compilers or optimization levels
+    UNK_TOKEN = "<UNK>"
+
+    # special token for mnemonics or arguments under a certain threshold
+    FEW_TOKEN = "<FEW>"
 
     def __init__(self, train: bool = False, debug: bool = False):
         """
@@ -80,6 +88,9 @@ class Preprocessor:
                        compiler=compiler)
 
         return ret
+
+    def feature_engineer(self, function: Function) -> np.ndarray:
+        pass
 
     def stats(self, training_set: str) -> None:
         """
@@ -159,20 +170,46 @@ class Preprocessor:
 
         return ret
 
-    def threshold_replacement(self, dictionary: Dict[str, int], replacement: str, threshold: int = 5) -> Dict[str, int]:
+    def build_ngrams(self, training_set: str, size: int = 2) -> Dict[str, int]:
+        """
+        Builds ngrams for mnemonics.
+        :param training_set: Path to the training set file (JSONL-formatted)
+        :param size: Size of ngrams to be created
+        :return: Dictionary of strings to integers, with ngrams as keys and occurrences as values.
+        """
+
+        ngrams = {}
+        with open(training_set) as dataset:
+            for line in dataset:
+                function = self.take(json_line=line)
+
+                # only consider mnemonics
+                instructions = [instr[0] for instr in function.instructions]
+                del function
+
+                # iterate on instructions with a sliding window of the given size
+                for i in range(len(instructions) - size + 1):
+                    mnemonics = instructions[i:i+size]
+                    mnemonics = ";".join(mnemonics)
+                    count = ngrams.get(mnemonics, 0) + 1
+                    ngrams[mnemonics] = count
+
+        return ngrams
+
+    def threshold_replacement(self, dictionary: Dict[str, int], replacement: str, threshold: int = 5) -> (Dict[str, int], List[str]):
         """
         Replaces all the keys with a number of occurrences less than the given threshold with the given replacement token.
         :param dictionary: Dictionary, as returned from Preprocessor.build_dictionaries
         :param replacement: Replacement token, as str
         :param threshold: Threshold value to apply the replacement, as int
-        :return: Input dictionary, after applying the threshold-based replacement
+        :return: Tuple (input dictionary after applying the threshold-based replacement, list of replaced keys)
         """
 
-        replaced = 0
+        replaced = []
         ret = deepcopy(dictionary)
         for key, value in dictionary.items():
             if value <= threshold:
-                replaced += 1
+                replaced.append(key)
 
                 if self.__debug:
                     print("Replacing {k} with {v} occurrences.".format(k=key,
@@ -184,27 +221,114 @@ class Preprocessor:
                 ret[replacement] = new_occ
 
         if self.__debug:
-            print("Replaced {n} keys under the occurrence threshold.".format(n=replaced))
+            print("Replaced {n} keys under the occurrence threshold.".format(n=len(replaced)))
 
         return ret
 
-    def regex_replacement(self, dictionary: Dict[str, int], replacement: str, regex: str) -> Dict[str, int]:
-        # TODO: support replacement for keys matching the regex (i.e. brackets presence or memory addresses)
-        pass
+    @staticmethod
+    def export_dictionary(dictionary: Dict, path: str) -> None:
+        """
+        Exports a dictionary to textual file containing a key per line.
+        :param dictionary: Dict to export
+        :param path: Path to file to write
+        :return: None
+        """
 
-    def feature_engineering(self, dicts: Dictionaries):
-        d = self.threshold_replacement(dictionary=dicts.arguments,
-                                       replacement="TOKEN")
+        with open(path, mode="w"):
+            pass
+
+        with open(path, mode="a") as file:
+            for key in dictionary.keys():
+                file.write("{k}\n".format(k=key))
+            file.flush()
+
+    def export_dictionaries(self, dictionaries: Dictionaries,
+                            mnemonics_path: str = None, arguments_path: str = None,
+                            compilers_path: str = None, optimizations_path: str = None) -> None:
+        """
+        Exports dictionaries to textual files containing a dictionary key per line.
+        :param dictionaries: Dictionaries object to export
+        :param mnemonics_path: Path to file to which the mnemonics dictionary will be exported to (optional)
+        :param arguments_path: Path to file to which the arguments dictionary will be exported to (optional)
+        :param compilers_path: Path to file to which the compilers dictionary will be exported to (optional)
+        :param optimizations_path: Path to file to which the optimizations dictionary will be exported to (optional)
+        :return: None
+        """
+
+        paths = [mnemonics_path, arguments_path, compilers_path, optimizations_path]
+        for i, path in enumerate(paths):
+            if path is not None:
+                if self.__debug:
+                    print("Writing to {path}...".format(path=path))
+
+                if i == 0:
+                    dictionary = dictionaries.mnemonics
+                elif i == 1:
+                    dictionary = dictionaries.arguments
+                elif i == 2:
+                    dictionary = dictionaries.compilers
+                else:
+                    dictionary = dictionaries.optimizations
+
+                Preprocessor.export_dictionary(dictionary=dictionary,
+                                               path=path)
+
+                if self.__debug:
+                    print("Done.\n")
+
+    @staticmethod
+    def import_dictionary(path: str, starting_tokens: List[str] = None) -> Dict[str, int]:
+        """
+        Imports a dictionary from a textual file containing a key per line.
+        :param path: Path to file containing a key per line
+        :param starting_tokens: List of tokens to prepend to the dictionary
+        :return: Dictionary containing the starting tokens and the rest of the keys from the file.
+        """
+
+        dictionary = {}
+        if starting_tokens is not None:
+            for token in starting_tokens:
+                dictionary[token] = len(dictionary)
+
+        with open(path) as file:
+            for line in file:
+                line = line.strip("\n")
+                dictionary[line] = len(dictionary)
+
+        return dictionary
+
+    def import_dictionaries(self,
+                            mnemonics_path: str = None, arguments_path: str = None,
+                            compilers_path: str = None, optimizations_path: str = None) -> Dictionaries:
+        """
+        Imports dictionaries from textual files.
+        :param mnemonics_path: Path to file to which the mnemonics dictionary will be imported from (optional)
+        :param arguments_path: Path to file to which the arguments dictionary will be imported from (optional)
+        :param compilers_path: Path to file to which the compilers dictionary will be imported from (optional)
+        :param optimizations_path: Path to file to which the optimizations dictionary will be imported from (optional)
+        :return: Dictionaries object.
+        """
+
+        mnemonics = Preprocessor.import_dictionary(path=mnemonics_path,
+                                                   starting_tokens=[self.UNK_TOKEN, self.FEW_TOKEN]) if mnemonics_path is not None else None
+
+        arguments = Preprocessor.import_dictionary(path=arguments_path,
+                                                   starting_tokens=[self.UNK_TOKEN, self.FEW_TOKEN]) if arguments_path is not None else None
+
+        compilers = Preprocessor.import_dictionary(path=compilers_path,
+                                                   starting_tokens=[self.UNK_TOKEN]) if compilers_path is not None else None
+
+        optimizations = Preprocessor.import_dictionary(path=optimizations_path,
+                                                       starting_tokens=[self.UNK_TOKEN]) if optimizations_path is not None else None
+
+        return Dictionaries(mnemonics=mnemonics,
+                            arguments=arguments,
+                            compilers=compilers,
+                            optimizations=optimizations)
 
 
 if __name__ == "__main__":
     train_path = "../data/train_dataset.jsonl"
     k = 5
     pre = Preprocessor(train=True, debug=True)
-    ds = pre.build_dictionaries(training_set=train_path)
-
-    #pre.feature_engineering(dicts=ds)
-
-    with open("../misc/args.csv", "w") as f:
-        for k, v in ds.arguments.items():
-            f.write("{k},{v}\n".format(k=k, v=v))
+    pre.build_ngrams(training_set=train_path)
