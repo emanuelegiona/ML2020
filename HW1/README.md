@@ -19,6 +19,10 @@ while the optimization levels are two:
 
 ```
 - data                          # general data directory, containing training and test sets
+    |__ 2grams.txt              # input dictionary of 2grams over mnemonics
+    |__ compilers.txt           # input/output dictionary of compilers
+    |__ mnemonics.txt           # input dictionary of mnemonics
+    |__ optimizations.txt       # input/output dictionary of optimizations
 - src                           # source file directory
     |__ models.py               # model definitions
     |__ preprocess.py           # pre-processing utilities
