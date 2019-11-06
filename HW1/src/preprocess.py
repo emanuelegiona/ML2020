@@ -99,8 +99,11 @@ class Preprocessor:
                 The label array can be None, in case of test set encoding.
         """
 
-        arr_size = len(input_dict) + (1 if count_addresses else 0) + (1 if count_brackets else 0)
+        # feature space size: input_dict + number of instructions + (optional) number of addresses + (optional) number of bracketed arguments
+        arr_size = len(input_dict) + 1 + (1 if count_addresses else 0) + (1 if count_brackets else 0)
         input_array = np.zeros(shape=arr_size)
+        input_array[len(input_dict)] = len(function.instructions)
+
         label_array = np.zeros(shape=2) if (function.compiler is not None and function.optimization is not None) else None
         if label_array is not None:
             label_array[0] = compiler_dict.get(function.compiler, compiler_dict[self.UNK_TOKEN])
@@ -337,35 +340,51 @@ class Preprocessor:
                             optimizations=optimizations)
 
 
+def load_dataset(path: str, input_dict_path: str,
+                 compiler_dict_path: str, optimization_dict_path: str,
+                 ngrams_size: int = 1, count_addresses: bool = False, count_brackets: bool = False,
+                 train: bool = False) -> (np.ndarray, np.ndarray or None):
+
+    helper = Preprocessor(train=train)
+    input_dict = helper.import_dictionary(path=input_dict_path, starting_tokens=[helper.UNK_TOKEN])
+    dicts = helper.import_dictionaries(compilers_path=compiler_dict_path,
+                                       optimizations_path=optimization_dict_path)
+
+    inputs = []
+    labels = []
+    with open(path) as dataset:
+        for line in dataset:
+            curr_function = helper.take(json_line=line)
+            curr_inputs, curr_labels = helper.feature_engineer(function=curr_function,
+                                                               input_dict=input_dict,
+                                                               compiler_dict=dicts.compilers,
+                                                               optimization_dict=dicts.optimizations,
+                                                               ngrams_size=ngrams_size,
+                                                               count_addresses=count_addresses,
+                                                               count_brackets=count_brackets)
+            inputs.append(curr_inputs)
+            if train:
+                labels.append(curr_labels)
+
+    inputs = np.asarray(inputs)
+    labels = np.asarray(labels) if train else None
+
+    return inputs, labels
+
+
 if __name__ == "__main__":
     train_path = "../data/train_dataset.jsonl"
-    k = 5
-    pre = Preprocessor(train=True, debug=True)
-
-    dictionaries = pre.import_dictionaries(mnemonics_path="../data/mnemonics.txt",
-                                           compilers_path="../data/compilers.txt",
-                                           optimizations_path="../data/optimizations.txt")
-    print(len(dictionaries.mnemonics))
-
-    bigrams = pre.import_dictionary(path="../data/2grams.txt", starting_tokens=[pre.UNK_TOKEN])
-    print(len(bigrams))
-
-    X, Y = [], []
-
-    with open(train_path) as f:
-        for line in f:
-            fn = pre.take(line)
-            arr, labels = pre.feature_engineer(function=fn,
-                                               input_dict=bigrams,
-                                               compiler_dict=dictionaries.compilers,
-                                               optimization_dict=dictionaries.optimizations,
-                                               ngrams_size=2,
-                                               count_addresses=True,
-                                               count_brackets=True)
-            X.append(arr)
-            Y.append(labels)
+    X, Y = load_dataset(path=train_path,
+                        input_dict_path="../data/2grams.txt",
+                        compiler_dict_path="../data/compilers.txt",
+                        optimization_dict_path="../data/optimizations.txt",
+                        ngrams_size=2,
+                        count_addresses=False,
+                        count_brackets=False,
+                        train=True)
 
     X = np.asarray(X)
     print(np.shape(X))
-    Y = np.asarray(Y)
-    print(np.shape(Y))
+    if Y is not None:
+        Y = np.asarray(Y)
+        print(np.shape(Y))

@@ -21,7 +21,8 @@ def get_SVM_model(C: float = 1.0, kernel: str = "rbf", gamma: Any = "auto", rand
                kernel=kernel,
                gamma=gamma,
                random_state=random_state,
-               cache_size=1024)
+               cache_size=1024,
+               max_iter=5)
 
 
 def get_KNN_model(k: int = 5, weighted: bool = False) -> KNeighborsClassifier:
