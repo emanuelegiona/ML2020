@@ -103,8 +103,8 @@ class Preprocessor:
         input_array = np.zeros(shape=arr_size)
         label_array = np.zeros(shape=2) if (function.compiler is not None and function.optimization is not None) else None
         if label_array is not None:
-            label_array[0] = compiler_dict[function.compiler]
-            label_array[1] = optimization_dict[function.optimization]
+            label_array[0] = compiler_dict.get(function.compiler, compiler_dict[self.UNK_TOKEN])
+            label_array[1] = optimization_dict.get(function.optimization, optimization_dict[self.UNK_TOKEN])
 
         addresses = 0
         brackets = 0
@@ -126,7 +126,7 @@ class Preprocessor:
         for i in range(len(function.instructions) - ngrams_size + 1):
             mnemonics = [instr[0] for instr in function.instructions[i:i+ngrams_size]]
             mnemonics = ";".join(mnemonics)
-            pos = input_dict.get(mnemonics, 0)
+            pos = input_dict.get(mnemonics, input_dict[self.UNK_TOKEN])
             input_array[pos] += 1
 
         return input_array, label_array
