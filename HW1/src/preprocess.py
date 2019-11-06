@@ -85,7 +85,7 @@ class Preprocessor:
         return ret
 
     def feature_engineer(self, function: Function, input_dict: Dict[str, int], compiler_dict: Dict[str, int], optimization_dict: Dict[str, int],
-                         ngrams_size: int = 1, count_addresses: bool = False, count_brackets: bool = False) -> (np.ndarray, int or None, int or None):
+                         ngrams_size: int = 1, count_addresses: bool = False, count_brackets: bool = False) -> (np.ndarray, np.ndarray or None):
         """
         Encodes a Function object into a NumPy array, in which dimensions correspond to occurrences of the input dictionary values.
         :param function: Function object to encode
@@ -95,12 +95,17 @@ class Preprocessor:
         :param ngrams_size: sliding window size to be used when building ngrams (if 1, ngrams are NOT used)
         :param count_addresses: if True, an additional dimension corresponds to the number of addresses arguments in this function
         :param count_brackets: if True, an additional dimension corresponds to the number of bracketed arguments in this function
-        :return: Tuple (NumPy array encoding the function, int-encoded compiler label, int-encoded optimization level label).
-                Both the compiler and the optimization level labels can be None, in case of test set encoding.
+        :return: Tuple (NumPy array encoding the function, 2-dimensional NumPy array containing int-encoded compiler label and int-encoded optimization level label).
+                The label array can be None, in case of test set encoding.
         """
 
         arr_size = len(input_dict) + (1 if count_addresses else 0) + (1 if count_brackets else 0)
-        array = np.zeros(shape=arr_size, dtype=np.int32)
+        input_array = np.zeros(shape=arr_size)
+        label_array = np.zeros(shape=2) if (function.compiler is not None and function.optimization is not None) else None
+        if label_array is not None:
+            label_array[0] = compiler_dict[function.compiler]
+            label_array[1] = optimization_dict[function.optimization]
+
         addresses = 0
         brackets = 0
 
@@ -113,20 +118,18 @@ class Preprocessor:
                         brackets += 1
 
             if (count_addresses or count_addresses) and not (count_addresses and count_brackets):
-                array[-1] = addresses if count_addresses else brackets
+                input_array[-1] = addresses if count_addresses else brackets
             elif count_addresses and count_brackets:
-                array[-2] = addresses
-                array[-1] = brackets
+                input_array[-2] = addresses
+                input_array[-1] = brackets
 
         for i in range(len(function.instructions) - ngrams_size + 1):
             mnemonics = [instr[0] for instr in function.instructions[i:i+ngrams_size]]
             mnemonics = ";".join(mnemonics)
             pos = input_dict.get(mnemonics, 0)
-            array[pos] += 1
+            input_array[pos] += 1
 
-        return array,\
-            compiler_dict[function.compiler] if function.compiler is not None else None,\
-            optimization_dict[function.optimization] if function.optimization is not None else None
+        return input_array, label_array
 
     def stats(self, training_set: str) -> None:
         """
@@ -339,25 +342,30 @@ if __name__ == "__main__":
     k = 5
     pre = Preprocessor(train=True, debug=True)
 
-    mnemonics = pre.import_dictionary(path="../misc/mnem.txt", starting_tokens=[pre.UNK_TOKEN])
-    compilers = pre.import_dictionary(path="../misc/comp.txt", starting_tokens=[pre.UNK_TOKEN])
-    optimizations = pre.import_dictionary(path="../misc/opts.txt", starting_tokens=[pre.UNK_TOKEN])
-    print(len(mnemonics))
+    dictionaries = pre.import_dictionaries(mnemonics_path="../data/mnemonics.txt",
+                                           compilers_path="../data/compilers.txt",
+                                           optimizations_path="../data/optimizations.txt")
+    print(len(dictionaries.mnemonics))
 
-    bigrams = pre.import_dictionary(path="../misc/2grams.txt", starting_tokens=[pre.UNK_TOKEN])
+    bigrams = pre.import_dictionary(path="../data/2grams.txt", starting_tokens=[pre.UNK_TOKEN])
     print(len(bigrams))
+
+    X, Y = [], []
 
     with open(train_path) as f:
         for line in f:
             fn = pre.take(line)
-            print(fn)
-            arr, c, o = pre.feature_engineer(function=fn,
-                                             input_dict=bigrams,
-                                             compiler_dict=compilers,
-                                             optimization_dict=optimizations,
-                                             ngrams_size=2,
-                                             count_addresses=True,
-                                             count_brackets=True)
-            print(len(arr))
-            print(arr)
-            break
+            arr, labels = pre.feature_engineer(function=fn,
+                                               input_dict=bigrams,
+                                               compiler_dict=dictionaries.compilers,
+                                               optimization_dict=dictionaries.optimizations,
+                                               ngrams_size=2,
+                                               count_addresses=True,
+                                               count_brackets=True)
+            X.append(arr)
+            Y.append(labels)
+
+    X = np.asarray(X)
+    print(np.shape(X))
+    Y = np.asarray(Y)
+    print(np.shape(Y))
