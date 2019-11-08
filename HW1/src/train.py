@@ -225,6 +225,17 @@ def train_and_export(model_id: str,
                      train_path: str, input_dict_path: str, ngrams_size: int,
                      compiler_dict_path: str, optimization_dict_path: str,
                      export_dir: str) -> None:
+    """
+    Trains the best performing model and exports it to file.
+    :param model_id: name of the model
+    :param train_path: path to the training set file (JSONL-formatted)
+    :param input_dict_path: path to the input dictionary file
+    :param ngrams_size: sliding window size to be used when building ngrams (if 1, ngrams are NOT used)
+    :param compiler_dict_path: path to the compilers input/output dictionary file
+    :param optimization_dict_path: path to the optimization levels input/output dictionary file
+    :param export_dir: path to directory where to export the models to
+    :return: None
+    """
 
     log_message(file_handle=None,
                 message="Training started: {model_id}".format(model_id=model_id))
@@ -251,8 +262,17 @@ def train_and_export(model_id: str,
     log_message(file_handle=None,
                 message="Training ended.\nExporting to {path}...".format(path=export_dir))
 
-    dump(svm_compiler, "{dir}/{model_id}_compilers.model")
-    dump(svm_optimization, "{dir}/{model_id}_compilers.model")
+    path = "{dir}/{model_id}_compiler.model".format(dir=export_dir,
+                                                    model_id=model_id)
+    with open(path, "wb"):
+        pass
+    dump(svm_compiler, path)
+
+    path = "{dir}/{model_id}_optimization.model".format(dir=export_dir,
+                                                        model_id=model_id)
+    with open(path, "wb"):
+        pass
+    dump(svm_optimization, path)
 
     log_message(file_handle=None,
                 message="Done.")
@@ -272,16 +292,16 @@ if __name__ == "__main__":
     #                optimization_dict_path="../data/optimizations.txt",
     #                log_path="../misc/cv.log")
 
-    linearSVC_best_tuning_CV(train_path="../data/train_dataset.jsonl",
-                             input_dict_path="../data/2grams.txt",
-                             ngrams_size=2,
-                             compiler_dict_path="../data/compilers.txt",
-                             optimization_dict_path="../data/optimizations.txt")
+    #linearSVC_best_tuning_CV(train_path="../data/train_dataset.jsonl",
+    #                         input_dict_path="../data/2grams.txt",
+    #                         ngrams_size=2,
+    #                         compiler_dict_path="../data/compilers.txt",
+    #                         optimization_dict_path="../data/optimizations.txt")
 
-    #train_and_export(model_id="svm",
-    #                 train_path="../data/train_dataset.jsonl",
-    #                 input_dict_path="../data/2grams.txt",
-    #                 ngrams_size=2,
-    #                 compiler_dict_path="../data/compilers.txt",
-    #                 optimization_dict_path="../data/optimizations.txt",
-    #                 export_dir="../misc/")
+    train_and_export(model_id="svm",
+                     train_path="../data/train_dataset.jsonl",
+                     input_dict_path="../data/2grams.txt",
+                     ngrams_size=2,
+                     compiler_dict_path="../data/compilers.txt",
+                     optimization_dict_path="../data/optimizations.txt",
+                     export_dir="../misc/")
