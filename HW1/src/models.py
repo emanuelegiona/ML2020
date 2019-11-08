@@ -2,27 +2,23 @@
 Model definitions.
 """
 
-from sklearn.svm import SVC
+from sklearn.svm import LinearSVC
 from sklearn.neighbors import KNeighborsClassifier
 from typing import Any
 
 
-def get_SVM_model(C: float = 1.0, kernel: str = "rbf", gamma: Any = "auto", random_state: Any = None) -> SVC:
+def get_SVM_model(C: float = 1.0, random_state: Any = None, verbose: int = 0) -> LinearSVC:
     """
-    Builds a Support Vector Machines model for classification tasks with the given parameters.
+    Builds a Support Vector Machines model with linear kernel for classification tasks with the given parameters.
     :param C: error function coefficient (the higher, the less important the regularization term is)
-    :param kernel: kernel to be used in SVM computation
-    :param gamma: kernel coefficient in cases of RBF, polynomial or sigmoid kernels
     :param random_state: seed for the pseudo-random number generator
+    :param verbose: verbosity level to be used during training
     :return: SVM model for classification using SciKit Learn library
     """
 
-    return SVC(C=C,
-               kernel=kernel,
-               gamma=gamma,
-               random_state=random_state,
-               cache_size=1024,
-               max_iter=5)
+    return LinearSVC(C=C,
+                     random_state=random_state,
+                     verbose=verbose)
 
 
 def get_KNN_model(k: int = 5, weighted: bool = False) -> KNeighborsClassifier:
