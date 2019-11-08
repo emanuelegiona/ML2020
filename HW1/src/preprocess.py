@@ -344,6 +344,18 @@ def load_dataset(path: str, input_dict_path: str,
                  compiler_dict_path: str, optimization_dict_path: str,
                  ngrams_size: int = 1, count_addresses: bool = False, count_brackets: bool = False,
                  train: bool = False) -> (np.ndarray, np.ndarray or None):
+    """
+    Loads and applies the pre-processing routine to the dataset.
+    :param path: path to the training set file (JSONL-formatted)
+    :param input_dict_path: path to the input dictionary file
+    :param compiler_dict_path: path to the compilers input/output dictionary file
+    :param optimization_dict_path: path to the optimization levels input/output dictionary file
+    :param ngrams_size: sliding window size to be used when building ngrams (if 1, ngrams are NOT used)
+    :param count_addresses: if True, an additional dimension corresponds to the number of addresses arguments in this function
+    :param count_brackets: if True, an additional dimension corresponds to the number of bracketed arguments in this function
+    :param train: if True, the dataset is expected to contain labels for compiler and optimization level
+    :return: Tuple (input samples as np.ndarray, labels as np.ndarray or None - in case of train=False)
+    """
 
     helper = Preprocessor(train=train)
     input_dict = helper.import_dictionary(path=input_dict_path, starting_tokens=[helper.UNK_TOKEN])
