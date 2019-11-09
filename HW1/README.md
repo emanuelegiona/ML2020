@@ -52,6 +52,7 @@ both implementations are from the [scikit-learn][sklearn] library.
     |__ preprocess.py           # pre-processing utilities
     |__ train.py                # model training, parameter tuning, and model evaluation
 - README.md                     # this file
+- anonymous_report.pdf          # PDF report for this homework
 ```
 
 [sklearn]: https://scikit-learn.org/
