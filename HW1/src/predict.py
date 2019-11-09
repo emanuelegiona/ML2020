@@ -63,10 +63,10 @@ def predict(test_path: str, compiler_model_path: str, optimization_model_path: s
     with open(output_path, "a") as preds_file:
         for compiler, optimization in zip(compiler_preds, optimization_preds):
             # in case the prediction is unknown compiler, fallback to random selection
-            compiler = rev_compilers[compiler] if compiler != 0 else random.choice(rev_compilers)
+            compiler = rev_compilers[compiler] if compiler != 0 else random.choice(rev_compilers[1:])
 
             # in case the prediction is unknown optimization level, fallback to random selection
-            optimization = rev_optimizations[optimization] if optimization != 0 else random.choice(rev_optimizations)
+            optimization = rev_optimizations[optimization] if optimization != 0 else random.choice(rev_optimizations[1:])
 
             log_message(file_handle=preds_file,
                         message="{c},{o}".format(c=compiler,
