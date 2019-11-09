@@ -12,6 +12,18 @@ def predict(test_path: str, compiler_model_path: str, optimization_model_path: s
             input_dict_path: str, ngrams_size: int,
             compiler_dict_path: str, optimization_dict_path: str,
             output_path: str) -> None:
+    """
+    Loads stored models and performs predictions on a given test set, producing a CSV output in the shape of <compiler>,<optimization level>.
+    :param test_path: path to the test set file (JSONL-formatted)
+    :param compiler_model_path: path to the stored SciKit-Learn model for compiler classification
+    :param optimization_model_path: path to the stored SciKit-Learn model for optimization level classification
+    :param input_dict_path: path to the input dictionary file
+    :param ngrams_size: sliding window size to be used when building ngrams (if 1, ngrams are NOT used)
+    :param compiler_dict_path: path to the compilers input/output dictionary file
+    :param optimization_dict_path: path to the optimization levels input/output dictionary file
+    :param output_path: path to the output file in which predictions will be stored in a CSV format
+    :return: None
+    """
 
     log_message(file_handle=None,
                 message="Loading dataset...")
