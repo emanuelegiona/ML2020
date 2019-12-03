@@ -8,6 +8,7 @@ from os import listdir
 from os.path import isfile, isdir, join
 from typing import Generator
 import numpy as np
+from keras.preprocessing.image import DirectoryIterator
 
 
 def image_dir_generator(directory: str, recursive: bool = True) -> Generator[Image, None, None]:
@@ -56,6 +57,38 @@ def show_stats(dataset_path: str) -> None:
 
     print("Min/Avg/Median/Max height:\t{s}".format(s=pretty_print(stats(heights))))
     print("Min/Avg/Median/Max width:\t{s}\n".format(s=pretty_print(stats(widths))))
+
+
+def load_dataset(train_generator: DirectoryIterator) -> (np.ndarray, np.ndarray):
+    """
+    Loads the whole dataset storing it in two separate NumPy arrays, inputs and labels, iterating on a DirectoryIterator.
+
+    :param train_generator: DirectoryIterator returned by Keras' flow() or flow_from_directory() methods
+
+    :return: (dataset inputs as np.ndarray, dataset labels as np.ndarray)
+    """
+
+    num_samples = train_generator.n
+    num_classes = train_generator.num_classes
+    img_width, img_height, img_channels = train_generator.image_shape
+
+    # full dataset
+    inputs = np.ndarray((num_samples, img_width, img_height, img_channels))
+    labels = np.ndarray((num_samples, num_classes))
+
+    print("Loading dataset...")
+    index = 0
+    for batch_inputs, batch_labels in train_generator:
+        if index == num_samples:
+            break
+
+        batch_size = len(batch_labels)
+        inputs[index:index+batch_size] = batch_inputs
+        labels[index:index+batch_size] = batch_labels
+        index += batch_size
+
+    print("Done.")
+    return inputs, labels
 
 
 if __name__ == "__main__":
