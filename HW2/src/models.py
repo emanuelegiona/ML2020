@@ -3,81 +3,124 @@ Model definitions.
 """
 
 import tensorflow as tf
-from keras.losses import categorical_crossentropy
 import keras
 from keras import Model, Input
 from keras.layers import Flatten, Dense, Dropout
 from keras.layers.convolutional import Conv2D, Conv2DTranspose, MaxPooling2D
-from keras.layers.local import LocallyConnected2D
-from keras.applications.vgg16 import VGG16
+from keras.layers.normalization import BatchNormalization
 from keras.applications.densenet import DenseNet121, DenseNet169, DenseNet201
 from keras.applications.nasnet import NASNetMobile, NASNetLarge
-from typing import List, Tuple
+from typing import Tuple
+from enum import Enum, auto
 
 
-def get_EmaNet_model(input_shape: Tuple[int, int], num_classes: int,
-                     convolutions: int = 1, dense_layers: int = 3,
-                     dropout_rate: float = 0.3) -> Model:
+class FeatureExtractor(Enum):
+    """
+    Enumerator class representing the choices for feature extractor models.
+    """
+
+    # --- -------- ---
+    # --- DenseNet ---
+    # --- -------- ---
+    Dense121 = auto()
+    Dense169 = auto()
+    Dense201 = auto()
+
+    # --- ------ ---
+    # --- NASNet ---
+    # --- ------ ---
+    NASNetMobile = auto()
+    NASNetLarge = auto()
+
+
+def EmaNet(input_shape: Tuple[int, int], num_classes: int,
+           convolutions: int = 1, dense_layers: int = 3,
+           starting_filters: int = 32, dropout_rate: float = 0.3) -> Model:
+    """
+    Custom CNN model that makes use of two separate stacks of convolution and deconvolution operations.
+    The resulting tensors are then concatenated and fed into a new stack of convolution operations, and, finally,
+    through a fully-connected NN with multiple layers.
+    Dropout and batch normalization are used throughout the network.
+
+    :param input_shape: Shape of the input tensor as a 2-dimensional int tuple
+    :param num_classes: Number of classes for the final FC layer
+    :param convolutions: Size of the convolution/deconvolution stacks
+    :param dense_layers: Number of layers for the FC NN
+    :param starting_filters: Number of filters to be used at the first operations in the stacks; subsequent operations
+                             will use a number of filters directly proportional to their position in the stack
+    :param dropout_rate: Dropout rate
+
+    :return: a Keras Model
+    """
 
     input_image = Input(shape=input_shape)
 
     # convolutional stack
-    conv = Conv2D(filters=32,
+    conv = Conv2D(filters=starting_filters,
                   kernel_size=(2, 2),
                   padding="same",
                   activation="relu")(input_image)
+    conv = BatchNormalization()(conv)
 
     for i in range(1, convolutions):
-        conv = Conv2D(filters=16,
+        conv = Conv2D(filters=starting_filters*i,
                       kernel_size=(1+i, 1+i),
                       padding="same",
                       activation="relu")(conv)
 
     conv = MaxPooling2D(pool_size=(2, 2),
                         padding="valid")(conv)
+    conv = BatchNormalization()(conv)
 
     # deconvolutional stack
-    deconv = Conv2DTranspose(filters=32,
+    deconv = Conv2DTranspose(filters=starting_filters,
                              kernel_size=(2, 2),
                              padding="same",
                              activation="relu")(input_image)
+    deconv = BatchNormalization()(deconv)
 
     for i in range(1, convolutions):
-        deconv = Conv2DTranspose(filters=16,
+        deconv = Conv2DTranspose(filters=starting_filters*i,
                                  kernel_size=(1+i, 1+i),
                                  padding="same",
                                  activation="relu")(deconv)
 
     deconv = MaxPooling2D(pool_size=(2, 2),
                           padding="valid")(deconv)
+    deconv = BatchNormalization()(deconv)
 
     # merge the two stacks
     merged = keras.layers.concatenate([conv, deconv])
 
-    merged = Conv2D(filters=16,
-                               kernel_size=(3, 3),
-                               padding="valid",
-                               activation="relu")(merged)
+    num_filters = starting_filters*10
+    merged = Conv2D(filters=num_filters,
+                    kernel_size=(2, 2),
+                    padding="valid",
+                    activation="relu")(merged)
     merged = MaxPooling2D(pool_size=(2, 2),
                           padding="valid")(merged)
+    merged = BatchNormalization()(merged)
 
-    merged = Conv2D(filters=16,
+    merged = Conv2D(filters=int(num_filters/2),
                     kernel_size=(3, 3),
                     padding="valid",
                     activation="relu")(merged)
     merged = MaxPooling2D(pool_size=(2, 2),
                           padding="valid")(merged)
+    merged = BatchNormalization()(merged)
 
     # final fully-connected layers
     dense = Flatten()(merged)
 
+    num_units = starting_filters*5
     for i in range(1, dense_layers+1):
-        dense = Dense(units=int(64/i),
+        dense = Dense(units=int(num_units/i),
                       activation="relu")(dense)
+        dense = BatchNormalization()(dense)
         dense = Dropout(rate=dropout_rate)(dense)
 
     output_dense = Dense(units=num_classes,
-                         activation="relu")(dense)
+                         activation="softmax")(dense)
 
     model = Model(input=input_image, output=output_dense)
     model.compile(loss=keras.losses.categorical_crossentropy,
@@ -87,42 +130,77 @@ def get_EmaNet_model(input_shape: Tuple[int, int], num_classes: int,
     return model
 
 
-def get_transfer_learning_model():
-    pass
+def TransferNet(input_shape: Tuple[int, int], num_classes: int,
+                feature_extractor: FeatureExtractor = None,
+                dense_layers: int = 3, dropout_rate: float = 0.3) -> Model:
+    """
+    Exploits a pre-trained model as feature extractor, feeding its output into a fully-connected NN.
+    The feature extractor model is NOT fine-tuned for the specific task.
+    Dropout and batch normalization are used throughout the trainable portion of the network.
 
+    :param input_shape: Shape of the input tensor as a 2-dimensional int tuple
+    :param num_classes: Number of classes for the final FC layer
+    :param feature_extractor: FeatureExtractor instance representing which pre-trained model to use as feature extractor
+    :param dense_layers: Number of layers for the FC NN
+    :param dropout_rate: Dropout rate
 
-def test():
-    model_input = Input(shape=shape)
-    vgg16 = NASNetLarge(weights="imagenet", include_top=False, input_tensor=model_input)
-    vgg16 = vgg16.output
-    back_model = Model(input=model_input, output=vgg16)
-    back_optimizer = "adam"
-    back_model.compile(loss=categorical_crossentropy,
-                       optimizer=back_optimizer,
-                       metrics=["accuracy"])
+    :return: a Keras model
+    """
 
-    vgg16_layer = "block5_pool"
-    back_output = back_model.get_layer(name=vgg16_layer).output
-    flatten = Flatten()(back_output)
-    dense = Dense(
-        units=train_gen.num_classes,
-        activation="softmax"
-    )(flatten)
+    model_input = Input(shape=input_shape)
 
-    model = Model(input=model_input, output=dense, name="TestNet")
-    optimizer = "adam"
-    model.compile(loss=categorical_crossentropy,
-                  optimizer=optimizer,
+    # load pre-trained model on ImageNet
+    if feature_extractor == FeatureExtractor.Dense121:
+        fe_model = DenseNet121(weights="imagenet", include_top=False, input_tensor=model_input)
+    elif feature_extractor == FeatureExtractor.Dense169:
+        fe_model = DenseNet169(weights="imagenet", include_top=False, input_tensor=model_input)
+    elif feature_extractor == FeatureExtractor.Dense201:
+        fe_model = DenseNet201(weights="imagenet", include_top=False, input_tensor=model_input)
+    elif feature_extractor == FeatureExtractor.NASNetLarge:
+        fe_model = NASNetLarge(weights="imagenet", include_top=False, input_tensor=model_input)
+    else:
+        # default: NASNetMobile
+        fe_model = NASNetMobile(weights="imagenet", include_top=False, input_tensor=model_input)
+
+    fe_model = Model(input=model_input, output=fe_model.output)
+    fe_model.compile(loss=keras.losses.categorical_crossentropy,
+                     optimizer="adam",
+                     metrics=["accuracy"])
+
+    # get handles to the model (input, output tensors)
+    fe_input = fe_model.get_layer(index=0).input
+    fe_output = fe_model.output
+
+    # freeze layers
+    for layer in fe_model.layers:
+        layer.trainable = False
+
+    # final fully-connected layers
+    dense = Flatten()(fe_output)
+
+    num_units = 256
+    for i in range(1, dense_layers + 1):
+        dense = Dense(units=int(num_units / i),
+                      activation="relu")(dense)
+        dense = BatchNormalization()(dense)
+        dense = Dropout(rate=dropout_rate)(dense)
+
+    output_dense = Dense(units=num_classes,
+                         activation="softmax")(dense)
+
+    model = Model(input=fe_input, output=output_dense)
+    model.compile(loss=keras.losses.categorical_crossentropy,
+                  optimizer="adam",
                   metrics=["accuracy"])
 
-    model.summary()
+    return model
 
 
 if __name__ == "__main__":
     train = "../data/MWI-Dataset-1.1.1_400/"
     train_datagen = tf.keras.preprocessing.image.ImageDataGenerator()
     train_gen = train_datagen.flow_from_directory(directory=train,
-                                                  target_size=(480, 640),
+                                                  target_size=(48, 64),
                                                   color_mode="rgb",
                                                   batch_size=64,
                                                   class_mode="categorical",
@@ -134,8 +212,11 @@ if __name__ == "__main__":
                                                                         s=shape,
                                                                         c=num_classes))
 
-    m = get_EmaNet_model(input_shape=shape,
-                         num_classes=num_classes,
-                         convolutions=5,
-                         dense_layers=5)
+    #m = EmaNet(input_shape=shape,
+    #           num_classes=num_classes,
+    #           convolutions=3,
+    #           dense_layers=5)
+
+    m = TransferNet(input_shape=shape,
+                    num_classes=num_classes)
     m.summary()
