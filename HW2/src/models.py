@@ -32,6 +32,19 @@ class FeatureExtractor(Enum):
     NASNetMobile = auto()
     NASNetLarge = auto()
 
+    @staticmethod
+    def get(name: str):
+        if name == "Dense121":
+            return FeatureExtractor.Dense121
+        elif name == "Dense169":
+            return FeatureExtractor.Dense169
+        elif name == "Dense201":
+            return FeatureExtractor.Dense201
+        elif name == "NASNetMobile":
+            return FeatureExtractor.NASNetMobile
+        elif name == "NASNetLarge":
+            return FeatureExtractor.NASNetLarge
+
 
 def EmaNet(input_shape: Tuple[int, int], num_classes: int,
            convolutions: int = 1, dense_layers: int = 3,
@@ -204,11 +217,12 @@ if __name__ == "__main__":
                                                   color_mode="rgb",
                                                   batch_size=64,
                                                   class_mode="categorical",
-                                                  shuffle=True)
+                                                  shuffle=False)
 
+    samples = train_gen.n
     shape = train_gen.image_shape
     num_classes = train_gen.num_classes
-    print("There are {n} samples of shape {s} over {c} classes.".format(n=train_gen.n,
+    print("There are {n} samples of shape {s} over {c} classes.".format(n=samples,
                                                                         s=shape,
                                                                         c=num_classes))
 
@@ -217,6 +231,7 @@ if __name__ == "__main__":
     #           convolutions=3,
     #           dense_layers=5)
 
-    m = TransferNet(input_shape=shape,
-                    num_classes=num_classes)
-    m.summary()
+    #m = TransferNet(input_shape=shape,
+    #                num_classes=num_classes)
+
+    #m.summary()
