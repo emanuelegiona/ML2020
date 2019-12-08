@@ -172,20 +172,15 @@ def TransferNet(input_shape: Tuple[int, int], num_classes: int,
     # load pre-trained model on ImageNet
     if feature_extractor == FeatureExtractor.Dense121:
         fe_model = DenseNet121(weights="imagenet", include_top=False, input_tensor=model_input)
-        out_layer = "relu"
     elif feature_extractor == FeatureExtractor.Dense169:
         fe_model = DenseNet169(weights="imagenet", include_top=False, input_tensor=model_input)
-        out_layer = "relu"
     elif feature_extractor == FeatureExtractor.Dense201:
         fe_model = DenseNet201(weights="imagenet", include_top=False, input_tensor=model_input)
-        out_layer = "relu"
     elif feature_extractor == FeatureExtractor.NASNetLarge:
         fe_model = NASNetLarge(weights="imagenet", include_top=False, input_tensor=model_input)
-        out_layer = "activation_260"
     else:
         # default: NASNetMobile
         fe_model = NASNetMobile(weights="imagenet", include_top=False, input_tensor=model_input)
-        out_layer = "activation_188"
 
     fe_model = Model(input=model_input, output=fe_model.output, name="FeatureExtractor")
     fe_model.compile(loss=keras.losses.categorical_crossentropy,
