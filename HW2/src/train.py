@@ -7,7 +7,7 @@ from datetime import datetime
 import numpy as np
 from keras.preprocessing.image import ImageDataGenerator, DirectoryIterator
 from keras import Model
-from keras.callbacks import EarlyStopping
+from keras.callbacks import EarlyStopping, CSVLogger, History
 from sklearn.model_selection import train_test_split
 from typing import Tuple, Any
 
@@ -36,6 +36,24 @@ class CustomEarlyStopping(EarlyStopping):
     def on_epoch_end(self, epoch, logs=None):
         if epoch > self.__min_epochs:
             super(CustomEarlyStopping, self).on_epoch_end(epoch=epoch, logs=logs)
+
+
+class CustomCSVLogger(CSVLogger):
+    """
+    Extends the CSVLogger callback in order to print out epoch stats during training.
+    """
+
+    def __init__(self, filename: str, separator: str = ",", append: bool = False):
+        super(CustomCSVLogger, self).__init__(filename=filename, separator=separator, append=append)
+
+    def on_epoch_end(self, epoch, logs=None):
+        super(CustomCSVLogger, self).on_epoch_end(epoch=epoch, logs=logs)
+        log_message(file_handle=None,
+                    message="Epoch {e}\n\ttrain loss: {v1:.3f}, train acc: {v2:.3f}\n\tval loss: {v3:.3f}, val acc: {v4:.3f}".format(e=epoch,
+                                                                                                                                     v1=logs["loss"],
+                                                                                                                                     v2=logs["acc"],
+                                                                                                                                     v3=logs["val_loss"],
+                                                                                                                                     v4=logs["val_acc"]))
 
 
 def get_time():
@@ -251,35 +269,130 @@ def grid_search(dataset_inputs: np.ndarray, dataset_labels: np.ndarray, test_gen
                         with_time=False)
 
 
-# --- best model ---
-# EmaNet achieving 76.5% in 5-fold CV on MWI-400 (no data augmentation)
-# TODO: to be confirmed after new grid search
-CONVOLUTIONS = 1
-DENSE_LAYERS = 3
-FILTERS = 32
-DROPOUT_PROB = 0.4
+def full_training(model: Model, log_path: str,
+                  training_set_dir: str, validation_set_dir: str,
+                  image_size: Tuple[int, int] = (48, 48), batch_size: int = 32, data_augmentation: bool = True,
+                  epochs: int = 150, early_stopping: bool = True) -> (Model, History):
+
+    training_datagenerator = ImageDataGenerator(rescale=(1. / 255))
+    validation_datagenerator = ImageDataGenerator(rescale=(1. / 255))
+    if data_augmentation:
+        training_datagenerator = ImageDataGenerator(rescale=(1. / 255),
+                                                    zoom_range=0.1,
+                                                    rotation_range=10,
+                                                    width_shift_range=0.1,
+                                                    height_shift_range=0.1,
+                                                    horizontal_flip=True,
+                                                    vertical_flip=False)
+
+    train_generator = training_datagenerator.flow_from_directory(directory=training_set_dir,
+                                                                 target_size=image_size,
+                                                                 color_mode="rgb",
+                                                                 batch_size=batch_size,
+                                                                 class_mode="categorical",
+                                                                 shuffle=True)
+
+    validation_generator = validation_datagenerator.flow_from_directory(directory=validation_set_dir,
+                                                                        target_size=image_size,
+                                                                        color_mode="rgb",
+                                                                        batch_size=batch_size,
+                                                                        class_mode="categorical",
+                                                                        shuffle=False)
+
+    callbacks = [CustomCSVLogger(filename=log_path)]
+    if early_stopping:
+        early_stopping_callback = CustomEarlyStopping(monitor="val_loss",
+                                                      patience=5,
+                                                      min_epochs=int(epochs/3),
+                                                      restore_best_weights=True)
+        callbacks.append(early_stopping_callback)
+
+    h = model.fit_generator(generator=train_generator,
+                            steps_per_epoch=ceil(train_generator.n/batch_size),
+                            epochs=epochs,
+                            callbacks=callbacks,
+                            validation_data=validation_generator,
+                            validation_steps=ceil(validation_generator.n/batch_size),
+                            verbose=0)
+
+    return model, h
+
+
+# --- best EmaNet model ---
+# 37.5% accuracy on Smart-I in 5-fold CV (training on MWI-400 - no data augmentation)
+EN_CONVOLUTIONS = 2
+EN_DENSE_LAYERS = 3
+EN_FILTERS = 32
+EN_DROPOUT_RATE = 0.2
 # --- --- ---
 
 
-def train_best_model(training_set_dir: str, validation_set_dir: str, batch_size: int,
-                     data_augmentation: bool = True, early_stopping: bool = True) -> Model:
+def train_best_EmaNet(training_set_dir: str, validation_set_dir: str,
+                      input_shape: Tuple[int, int], num_classes: int,
+                      batch_size: int = 32, epochs: int = 150,
+                      data_augmentation: bool = True, early_stopping: bool = True) -> (Model, History):
 
-    # TODO: continue development after new grid search
+    model_id = "EmaNet_c{c}_d{d}_f{f}_p{p}".format(c=EN_CONVOLUTIONS,
+                                                   d=EN_DENSE_LAYERS,
+                                                   f=EN_FILTERS,
+                                                   p=EN_DROPOUT_RATE)
 
-    # perform data augmentation if needed
-    training_datagenerator = ImageDataGenerator(rescale=(1./255),
-                                                zoom_range=0.1,
-                                                rotation_range=10,
-                                                width_shift_range=0.1,
-                                                height_shift_range=0.1,
-                                                horizontal_flip=True,
-                                                vertical_flip=False) if data_augmentation else ImageDataGenerator()
+    model = EmaNet(input_shape=input_shape,
+                   num_classes=num_classes,
+                   convolutions=EN_CONVOLUTIONS,
+                   dense_layers=EN_DENSE_LAYERS,
+                   filters=EN_FILTERS,
+                   dropout_rate=EN_DROPOUT_RATE)
 
-    pass
+    model, history = full_training(model=model,
+                                   log_path="../misc/{id}.log".format(id=model_id),
+                                   training_set_dir=training_set_dir,
+                                   validation_set_dir=validation_set_dir,
+                                   batch_size=batch_size,
+                                   data_augmentation=data_augmentation,
+                                   epochs=epochs,
+                                   early_stopping=early_stopping)
+
+    return model, history
+
+
+# --- best TransferNet model ---
+# 33% accuracy on Smart-I in 5-fold CV (training on MWI-400 - no data augmentation)
+TN_FEAT_EXTRACTOR = "NASNetMobile"
+TN_DENSE_LAYERS = 5
+TN_DROPOUT_RATE = 0.3
+# --- --- ---
+
+
+def train_best_TransferNet(training_set_dir: str, validation_set_dir: str,
+                           input_shape: Tuple[int, int], num_classes: int,
+                           batch_size: int = 32, epochs: int = 150,
+                           data_augmentation: bool = True, early_stopping: bool = True) -> (Model, History):
+
+    model_id = "TransferNet_{fe}_d{d}_p{p}".format(fe=TN_FEAT_EXTRACTOR,
+                                                   d=TN_DENSE_LAYERS,
+                                                   p=TN_DROPOUT_RATE)
+
+    model = TransferNet(input_shape=input_shape,
+                        num_classes=num_classes,
+                        feature_extractor=FeatureExtractor.get(TN_FEAT_EXTRACTOR),
+                        dense_layers=TN_DENSE_LAYERS,
+                        dropout_rate=TN_DROPOUT_RATE)
+
+    model, history = full_training(model=model,
+                                   log_path="../misc/{id}.log".format(id=model_id),
+                                   training_set_dir=training_set_dir,
+                                   validation_set_dir=validation_set_dir,
+                                   batch_size=batch_size,
+                                   data_augmentation=data_augmentation,
+                                   epochs=epochs,
+                                   early_stopping=early_stopping)
+
+    return model, history
 
 
 if __name__ == "__main__":
-    train = "../data/MWI-Dataset-1.1.1_400/"
+    train = "../data/MWI-Dataset-full/"
     test = "../data/TestSet_Weather/Weather_Dataset/"
     batch_size = 32
 
@@ -291,21 +404,33 @@ if __name__ == "__main__":
                                                   class_mode="categorical",
                                                   shuffle=False)
 
-    test_datagen = ImageDataGenerator(rescale=(1. / 255))
-    test_gen = test_datagen.flow_from_directory(directory=test,
-                                                target_size=(48, 48),
-                                                color_mode="rgb",
-                                                batch_size=batch_size,
-                                                class_mode="categorical",
-                                                shuffle=False)
+    #test_datagen = ImageDataGenerator(rescale=(1. / 255))
+    #test_gen = test_datagen.flow_from_directory(directory=test,
+    #                                            target_size=(48, 48),
+    #                                            color_mode="rgb",
+    #                                            batch_size=batch_size,
+    #                                            class_mode="categorical",
+    #                                            shuffle=False)
 
     # whole dataset
-    inputs, labels = load_dataset(train_generator=train_gen)
+    #inputs, labels = load_dataset(train_generator=train_gen)
 
-    grid_search(dataset_inputs=inputs,
-                dataset_labels=labels,
-                test_generator=test_gen,
-                input_shape=train_gen.image_shape,
-                num_classes=train_gen.num_classes,
-                batch_size=batch_size,
-                log_path="../misc/grid_search_full3.txt")
+    #grid_search(dataset_inputs=inputs,
+    #            dataset_labels=labels,
+    #            test_generator=test_gen,
+    #            input_shape=train_gen.image_shape,
+    #            num_classes=train_gen.num_classes,
+    #            batch_size=batch_size,
+    #            log_path="../misc/grid_search_full3.txt")
+
+    # EmaNet model training
+    train_best_EmaNet(training_set_dir=train,
+                      validation_set_dir=test,
+                      input_shape=train_gen.image_shape,
+                      num_classes=train_gen.num_classes)
+
+    # TransferNet model training
+    train_best_TransferNet(training_set_dir=train,
+                           validation_set_dir=test,
+                           input_shape=train_gen.image_shape,
+                           num_classes=train_gen.num_classes)
