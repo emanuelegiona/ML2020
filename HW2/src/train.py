@@ -49,11 +49,11 @@ class CustomCSVLogger(CSVLogger):
     def on_epoch_end(self, epoch, logs=None):
         super(CustomCSVLogger, self).on_epoch_end(epoch=epoch, logs=logs)
         log_message(file_handle=None,
-                    message="Epoch {e}\n\ttrain loss: {v1:.3f}, train acc: {v2:.3f}\n\tval loss: {v3:.3f}, val acc: {v4:.3f}".format(e=epoch,
-                                                                                                                                     v1=logs["loss"],
-                                                                                                                                     v2=logs["acc"],
-                                                                                                                                     v3=logs["val_loss"],
-                                                                                                                                     v4=logs["val_acc"]))
+                    message="Epoch {e}\n\ttrain loss: {v1:.3f}, train acc: {v2:.3f}\n\tval loss: {v3:.3f}, val acc: {v4:.3f}\n".format(e=epoch,
+                                                                                                                                       v1=logs["loss"],
+                                                                                                                                       v2=logs["acc"],
+                                                                                                                                       v3=logs["val_loss"],
+                                                                                                                                       v4=logs["val_acc"]))
 
 
 def get_time():
@@ -169,6 +169,23 @@ def kfold_cross_validation(model_id: str, model: Model,
 def grid_search(dataset_inputs: np.ndarray, dataset_labels: np.ndarray, test_generator: DirectoryIterator,
                 input_shape: Tuple[int, int], num_classes: int, log_path: str,
                 batch_size: int = 32, epochs: int = 100, k_folds: int = 5) -> None:
+    """
+    Performs grid parameter search with integrated k-fold cross validation, printing results to a log file.
+    Models are trained on k random splits of the training set, using an 80-20 partition scheme for training and
+    validation sets, then evaluated on the given test set (test_generator).
+
+    :param dataset_inputs: NumPy array representing input samples of the whole training set
+    :param dataset_labels: NumPy array representing labels of the whole training set
+    :param test_generator: DirectoryIterator instance for iterating over the test set
+    :param input_shape: Shape of the input tensor as a 2-dimensional int tuple
+    :param num_classes: Number of classes for the final FC layer
+    :param log_path: Path to the log file
+    :param batch_size: Size of the batch to use (default: 32)
+    :param epochs: Number of epochs to train the model (default: 100)
+    :param k_folds: Number of folds to use for CV (default: 5)
+
+    :return: None
+    """
 
     # tuning parameters for an EmaNet model
     emanet_params = {"convolutions": [2, 3],
@@ -273,6 +290,24 @@ def full_training(model: Model, log_path: str,
                   training_set_dir: str, validation_set_dir: str,
                   image_size: Tuple[int, int] = (48, 48), batch_size: int = 32, data_augmentation: bool = True,
                   epochs: int = 150, early_stopping: bool = True) -> (Model, History):
+    """
+    Performs full training of the given model, logging metrics at the end of each epoch.
+    Supports techniques such as data augmentation and early stopping, the latter being enforced only after 1/3 of the
+    original epochs have already been performed and after 10 epochs with no improvement.
+    In case of early stopping, the best performing weights are restored.
+
+    :param model: Keras Model instance
+    :param log_path: Path to the log file (CSV format)
+    :param training_set_dir: Path to the directory containing the training set
+    :param validation_set_dir: Path to the directory containing the validation set
+    :param image_size: Target size of images (default: 48 x 48)
+    :param batch_size: Size of the batch to use (default: 32)
+    :param data_augmentation: if True, performs data augmentation (default: True)
+    :param epochs: Number of epochs to train the model (default: 150)
+    :param early_stopping: if True, applies early stopping (default: True)
+
+    :return: (best-performing Keras Model, History object)
+    """
 
     training_datagenerator = ImageDataGenerator(rescale=(1. / 255))
     validation_datagenerator = ImageDataGenerator(rescale=(1. / 255))
@@ -302,7 +337,7 @@ def full_training(model: Model, log_path: str,
     callbacks = [CustomCSVLogger(filename=log_path)]
     if early_stopping:
         early_stopping_callback = CustomEarlyStopping(monitor="val_loss",
-                                                      patience=5,
+                                                      patience=10,
                                                       min_epochs=int(epochs/3),
                                                       restore_best_weights=True)
         callbacks.append(early_stopping_callback)
@@ -331,12 +366,27 @@ def train_best_EmaNet(training_set_dir: str, validation_set_dir: str,
                       input_shape: Tuple[int, int], num_classes: int,
                       batch_size: int = 32, epochs: int = 150,
                       data_augmentation: bool = True, early_stopping: bool = True) -> (Model, History):
+    """
+    Trains an EmaNet model with the best-performing parameters from grid search, then exports it to a H5 file.
+
+    :param training_set_dir: Path to the directory containing the training set
+    :param validation_set_dir: Path to the directory containing the validation set
+    :param input_shape: Shape of the input tensor as a 2-dimensional int tuple
+    :param num_classes: Number of classes for the final FC layer
+    :param batch_size: Size of the batch to use (default: 32)
+    :param data_augmentation: if True, performs data augmentation (default: True)
+    :param epochs: Number of epochs to train the model (default: 150)
+    :param early_stopping: if True, applies early stopping (default: True)
+
+    :return: (best-performing Keras Model, History object)
+    """
 
     model_id = "EmaNet_c{c}_d{d}_f{f}_p{p}".format(c=EN_CONVOLUTIONS,
                                                    d=EN_DENSE_LAYERS,
                                                    f=EN_FILTERS,
                                                    p=EN_DROPOUT_RATE)
 
+    print("Model: {m}".format(m=model_id))
     model = EmaNet(input_shape=input_shape,
                    num_classes=num_classes,
                    convolutions=EN_CONVOLUTIONS,
@@ -344,14 +394,19 @@ def train_best_EmaNet(training_set_dir: str, validation_set_dir: str,
                    filters=EN_FILTERS,
                    dropout_rate=EN_DROPOUT_RATE)
 
+    print("Training...")
     model, history = full_training(model=model,
-                                   log_path="../misc/{id}.log".format(id=model_id),
+                                   log_path="../misc/{id}.csv".format(id=model_id),
                                    training_set_dir=training_set_dir,
                                    validation_set_dir=validation_set_dir,
                                    batch_size=batch_size,
                                    data_augmentation=data_augmentation,
                                    epochs=epochs,
                                    early_stopping=early_stopping)
+
+    print("Training ended.\nSaving model...")
+    model.save(filepath="../misc/EmaNet.h5")
+    print("Done.")
 
     return model, history
 
@@ -368,25 +423,45 @@ def train_best_TransferNet(training_set_dir: str, validation_set_dir: str,
                            input_shape: Tuple[int, int], num_classes: int,
                            batch_size: int = 32, epochs: int = 150,
                            data_augmentation: bool = True, early_stopping: bool = True) -> (Model, History):
+    """
+    Trains a TransferNet model with the best-performing parameters from grid search, then exports it to a H5 file.
+
+    :param training_set_dir: Path to the directory containing the training set
+    :param validation_set_dir: Path to the directory containing the validation set
+    :param input_shape: Shape of the input tensor as a 2-dimensional int tuple
+    :param num_classes: Number of classes for the final FC layer
+    :param batch_size: Size of the batch to use (default: 32)
+    :param data_augmentation: if True, performs data augmentation (default: True)
+    :param epochs: Number of epochs to train the model (default: 150)
+    :param early_stopping: if True, applies early stopping (default: True)
+
+    :return: (best-performing Keras Model, History object)
+    """
 
     model_id = "TransferNet_{fe}_d{d}_p{p}".format(fe=TN_FEAT_EXTRACTOR,
                                                    d=TN_DENSE_LAYERS,
                                                    p=TN_DROPOUT_RATE)
 
+    print("Model: {m}".format(m=model_id))
     model = TransferNet(input_shape=input_shape,
                         num_classes=num_classes,
                         feature_extractor=FeatureExtractor.get(TN_FEAT_EXTRACTOR),
                         dense_layers=TN_DENSE_LAYERS,
                         dropout_rate=TN_DROPOUT_RATE)
 
+    print("Training...")
     model, history = full_training(model=model,
-                                   log_path="../misc/{id}.log".format(id=model_id),
+                                   log_path="../misc/{id}.csv".format(id=model_id),
                                    training_set_dir=training_set_dir,
                                    validation_set_dir=validation_set_dir,
                                    batch_size=batch_size,
                                    data_augmentation=data_augmentation,
                                    epochs=epochs,
                                    early_stopping=early_stopping)
+
+    print("Training ended.\nSaving model...")
+    model.save(filepath="../misc/TransferNet.h5")
+    print("Done.")
 
     return model, history
 
