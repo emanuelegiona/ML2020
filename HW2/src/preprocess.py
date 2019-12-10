@@ -59,31 +59,33 @@ def show_stats(dataset_path: str) -> None:
     print("Min/Avg/Median/Max width:\t{s}\n".format(s=pretty_print(stats(widths))))
 
 
-def load_dataset(train_generator: DirectoryIterator) -> (np.ndarray, np.ndarray):
+def load_dataset(generator: DirectoryIterator, labels_only: bool = False) -> (np.ndarray or None, np.ndarray):
     """
     Loads the whole dataset storing it in two separate NumPy arrays, inputs and labels, iterating on a DirectoryIterator.
 
-    :param train_generator: DirectoryIterator returned by Keras' flow() or flow_from_directory() methods
+    :param generator: DirectoryIterator returned by Keras' flow() or flow_from_directory() methods
+    :param labels_only: if True, only returns ground truth labels (default: False)
 
     :return: (dataset inputs as np.ndarray, dataset labels as np.ndarray)
     """
 
-    num_samples = train_generator.n
-    num_classes = train_generator.num_classes
-    img_width, img_height, img_channels = train_generator.image_shape
+    num_samples = generator.n
+    num_classes = generator.num_classes
+    img_width, img_height, img_channels = generator.image_shape
 
     # full dataset
-    inputs = np.ndarray((num_samples, img_width, img_height, img_channels))
+    inputs = None if labels_only else np.ndarray((num_samples, img_width, img_height, img_channels))
     labels = np.ndarray((num_samples, num_classes))
 
     print("Loading dataset...")
     index = 0
-    for batch_inputs, batch_labels in train_generator:
+    for batch_inputs, batch_labels in generator:
         if index == num_samples:
             break
 
         batch_size = len(batch_labels)
-        inputs[index:index+batch_size] = batch_inputs
+        if inputs is not None:
+            inputs[index:index+batch_size] = batch_inputs
         labels[index:index+batch_size] = batch_labels
         index += batch_size
 
