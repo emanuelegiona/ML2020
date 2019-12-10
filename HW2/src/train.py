@@ -92,7 +92,7 @@ def kfold_cross_validation(model_id: str, model: Model,
                            batch_size: int = 32, epochs: int = 100, k_folds: int = 5) -> (float, float, float, float):
     """
     Performs K-fold cross validation of the given model, returning minimum, average (+ std dev), and maximum accuracy achieved.
-    Supports generator-based training providing train_generator instead of dataset_inputs and dataset_labels.
+    Supports generator-based training providing generator instead of dataset_inputs and dataset_labels.
     In this case, test_generator has to be provided as well.
     In case dataset_inputs, dataset_labels, and test_generator are provided: the validation set will be extracted from
     dataset_inputs and dataset_labels, but test_generator will be used when reporting the accuracy score.
@@ -110,8 +110,8 @@ def kfold_cross_validation(model_id: str, model: Model,
     :return: (min accuracy, average accuracy, accuracy standard deviation, max accuracy)
     """
 
-    assert not ((dataset_inputs is None or dataset_labels is None) and train_generator is None), "dataset_inputs and dataset_labels must be provided if train_generator is not in use"
-    assert not (train_generator is not None and test_generator is None), "test_generator must be provided if train_generator is in use"
+    assert not ((dataset_inputs is None or dataset_labels is None) and train_generator is None), "dataset_inputs and dataset_labels must be provided if generator is not in use"
+    assert not (train_generator is not None and test_generator is None), "test_generator must be provided if generator is in use"
 
     history = []
     print("Saving weights...")
@@ -488,7 +488,7 @@ if __name__ == "__main__":
     #                                            shuffle=False)
 
     # whole dataset
-    #inputs, labels = load_dataset(train_generator=train_gen)
+    #inputs, labels = load_dataset(generator=train_gen)
 
     #grid_search(dataset_inputs=inputs,
     #            dataset_labels=labels,
