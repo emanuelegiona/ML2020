@@ -115,7 +115,13 @@ def evaluate(ground_truth: np.ndarray, predictions: np.ndarray, classes: Dict[st
                            y_pred=predictions))
 
 
-if __name__ == "__main__":
+def static_evaluation() -> None:
+    """
+    Performs evaluation of the best two models using the Smart-I test set.
+
+    :return: None
+    """
+
     train = "../data/MWI-Dataset-full/"
     test = "../data/TestSet_Weather/Weather_Dataset/"
 
@@ -157,3 +163,26 @@ if __name__ == "__main__":
 
     print("--- TransferNet ---")
     evaluate(ground_truth=gold_labels, predictions=preds_transfernet, classes=class_dict)
+
+
+if __name__ == "__main__":
+    #static_evaluation()
+
+    train = "../data/MWI-Dataset-full/"
+    test = "../data/WeatherBlindTestSet/"
+
+    datagen = ImageDataGenerator(rescale=(1. / 255))
+    gen = datagen.flow_from_directory(directory=train,
+                                      target_size=(48, 48),
+                                      color_mode="rgb",
+                                      batch_size=32,
+                                      class_mode="categorical",
+                                      shuffle=False)
+
+    class_dict = gen.class_indices
+    del gen
+
+    preds_emanet = predict(model_path="../misc/EmaNet.h5",
+                           test_set_dir=test,
+                           classes=class_dict,
+                           output_path="../misc/TransferNet_preds_real.csv")
