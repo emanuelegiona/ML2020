@@ -108,3 +108,4 @@ venv.bak/
 /misc
 /data/MWI*
 /data/TestSet*
+/data/WeatherBlindTestSet*
