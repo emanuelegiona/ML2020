@@ -13,6 +13,17 @@ For this homework, the weather conditions are the following:
 The dataset being used is the [MWI Dataset][mwi_dataset], used in whole
 or parts of it during the training and/or validation phases.
 
+## Models used
+
+The models compared when solving this homework are two:
+
+- EmaNet: a novel CNN architecture exploiting two separate stacks of convolutional and deconvolutional layers;
+
+- TransferNet: a custom CNN architecture leveraging a pre-trained model as feature extractor.
+
+More details about the architectures and their effectiveness can be found [reading report][report].
+
+
 ## Directory structure
 
 ```
@@ -23,6 +34,7 @@ or parts of it during the training and/or validation phases.
     |__ preprocess.py           # pre-processing utilities
     |__ train.py                # model training, parameter tuning, and model evaluation
 - README.md                     # this file
+- anonymous_report.pdf          # PDF for this homework
 ```
 
 [mwi_dataset]: https://mwidataset.weebly.com
